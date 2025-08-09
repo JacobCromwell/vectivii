@@ -1,23 +1,109 @@
 {
   "name": "vectivii",
   "displayName": "vectivii",
-  "description": "ai compare tool",
-  "version": "0.0.1",
+  "description": "Compare coding solutions from multiple AI models (GPT-4o vs Claude 3.5 Sonnet)",
+  "version": "1.0.0",
+  "icon": "images/icon.png",
+  "author": "Jacob Cromwell",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JacobCromwell/vectasight.git"
+  },
   "engines": {
-    "vscode": "^1.103.0"
+    "vscode": "^1.90.0"
   },
   "categories": [
-    "Other"
+    "AI",
+    "Other",
+    "Education"
+  ],
+  "keywords": [
+    "ai",
+    "copilot",
+    "gpt",
+    "claude",
+    "compare",
+    "coding",
+    "assistant"
   ],
   "activationEvents": [],
-  "main": "./dist/extension.js",
+  "main": "./out/extension.js",
   "contributes": {
+    "chatParticipants": [
+      {
+        "id": "aicompare.assistant",
+        "fullName": "AI Code Compare",
+        "name": "aicompare", 
+        "description": "Compare coding solutions from multiple AI models",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "compare",
+            "description": "Compare solutions from GPT-4o and Claude 3.5 Sonnet"
+          },
+          {
+            "name": "analyze",
+            "description": "Analyze differences between AI responses"
+          },
+          {
+            "name": "explain",
+            "description": "Get explanations from both models"
+          }
+        ]
+      }
+    ],
     "commands": [
       {
-        "command": "vectivii.helloWorld",
-        "title": "Hello World"
+        "command": "aicompare.openPanel",
+        "title": "AI Compare: Open Chat",
+        "category": "AI Compare"
+      },
+      {
+        "command": "aicompare.compareSelection",
+        "title": "AI Compare: Compare Selected Code",
+        "category": "AI Compare"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "aicompare.compareSelection",
+          "when": "editorHasSelection",
+          "group": "1_modification"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AI Compare",
+      "properties": {
+        "aicompare.includeGoogleGemini": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include Google Gemini in comparisons (requires API key)"
+        },
+        "aicompare.googleApiKey": {
+          "type": "string",
+          "description": "Google AI API Key (optional, for Gemini comparison)",
+          "scope": "machine-overridable"
+        },
+        "aicompare.defaultComparisonMode": {
+          "type": "string",
+          "enum": ["side-by-side", "unified", "analysis-only"],
+          "default": "side-by-side",
+          "description": "Default format for displaying comparisons"
+        },
+        "aicompare.showTimestamps": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show response timestamps in comparisons"
+        },
+        "aicompare.includeMetrics": {
+          "type": "boolean", 
+          "default": true,
+          "description": "Include response metrics (length, code blocks, etc.)"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
