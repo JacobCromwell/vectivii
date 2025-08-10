@@ -27,7 +27,7 @@
     "assistant"
   ],
   "activationEvents": [],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "chatParticipants": [
       {
@@ -55,12 +55,12 @@
     "commands": [
       {
         "command": "aicompare.openPanel",
-        "title": "AI Compare: Open Chat",
+        "title": "Open Chat",
         "category": "AI Compare"
       },
       {
         "command": "aicompare.compareSelection",
-        "title": "AI Compare: Compare Selected Code",
+        "title": "Compare Selected Code",
         "category": "AI Compare"
       }
     ],

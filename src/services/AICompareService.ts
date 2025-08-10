@@ -188,11 +188,26 @@ export class AICompareService {
             );
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(`Google API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+                let errorMessage = `Google API error: ${response.status}`;
+                try {
+                    const errorData = await response.json() as { error?: { message?: string } };
+                    if (errorData?.error?.message) {
+                        errorMessage += ` - ${errorData.error.message}`;
+                    }
+                } catch {
+                    // Ignore JSON parsing errors for error response
+                }
+                throw new Error(errorMessage);
             }
 
-            const data = await response.json();
+            const data = await response.json() as { 
+                candidates?: Array<{
+                    content?: {
+                        parts?: Array<{ text?: string }>;
+                    };
+                }>;
+            };
+            
             const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated';
             
             const endTime = Date.now();
@@ -224,15 +239,18 @@ export class AICompareService {
     }
 
     private handleLanguageModelError(error: vscode.LanguageModelError): string {
-        switch (error.code) {
-            case vscode.LanguageModelError.NoAccessToModel:
-                return 'No access to this model. Please check your GitHub Copilot subscription.';
-            case vscode.LanguageModelError.RequestThrottled:
-                return 'Request throttled. Please wait a moment and try again.';
-            case vscode.LanguageModelError.Blocked:
-                return 'Request blocked. The prompt may violate content policies.';
-            default:
-                return `Language model error: ${error.message}`;
+        // Since the specific error codes don't exist in the current VS Code API,
+        // we'll handle it based on the error message or use a general approach
+        const message = error.message.toLowerCase();
+        
+        if (message.includes('access') || message.includes('subscription')) {
+            return 'No access to this model. Please check your GitHub Copilot subscription.';
+        } else if (message.includes('throttl') || message.includes('rate limit')) {
+            return 'Request throttled. Please wait a moment and try again.';
+        } else if (message.includes('block') || message.includes('content policy')) {
+            return 'Request blocked. The prompt may violate content policies.';
+        } else {
+            return `Language model error: ${error.message}`;
         }
     }
 

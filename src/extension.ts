@@ -48,30 +48,112 @@ export function activate(context: vscode.ExtensionContext) {
         }
     };
 
-    // Register commands
-    const openPanelCommand = vscode.commands.registerCommand('aicompare.openPanel', () => {
-        vscode.commands.executeCommand('workbench.panel.chatSidebar.copilot');
-        vscode.window.showInformationMessage('Use @aicompare in the chat to start comparing AI models!');
+    // Register commands with proper error handling
+    const openPanelCommand = vscode.commands.registerCommand('aicompare.openPanel', async () => {
+        try {
+            // Try multiple command variations to open chat
+            const chatCommands = [
+                'workbench.panel.chat.view.copilot.focus',
+                'workbench.action.chat.open',
+                'workbench.panel.chat',
+                'github.copilot.interactiveSession.focus',
+                'workbench.action.toggleChatSidebar'
+            ];
+
+            let commandExecuted = false;
+            
+            for (const command of chatCommands) {
+                try {
+                    await vscode.commands.executeCommand(command);
+                    commandExecuted = true;
+                    console.log(`Successfully executed command: ${command}`);
+                    break;
+                } catch (error) {
+                    console.log(`Command ${command} failed:`, error);
+                    continue;
+                }
+            }
+
+            if (!commandExecuted) {
+                // Fallback: Show information about how to access the chat
+                const selection = await vscode.window.showInformationMessage(
+                    'Unable to open chat automatically. Please open the chat panel manually.',
+                    'Show Instructions',
+                    'OK'
+                );
+                
+                if (selection === 'Show Instructions') {
+                    vscode.window.showInformationMessage(
+                        'To use AI Compare:\n' +
+                        '1. Open Chat panel (Ctrl+Alt+I or Cmd+Alt+I)\n' +
+                        '2. Type @aicompare followed by your question\n' +
+                        '3. Use commands like /compare, /analyze, or /explain'
+                    );
+                }
+            } else {
+                // Show success message with instructions
+                const infoMessage = await vscode.window.showInformationMessage(
+                    'Chat panel opened! Use @aicompare to start comparing AI models.',
+                    'Got it'
+                );
+            }
+        } catch (error) {
+            console.error('Error in openPanel command:', error);
+            vscode.window.showErrorMessage(
+                `Failed to open chat panel: ${error instanceof Error ? error.message : 'Unknown error'}`
+            );
+        }
     });
 
     const compareSelectionCommand = vscode.commands.registerCommand('aicompare.compareSelection', async () => {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-            vscode.window.showErrorMessage('No active editor found');
-            return;
-        }
+        try {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) {
+                vscode.window.showErrorMessage('No active editor found');
+                return;
+            }
 
-        const selection = editor.document.getText(editor.selection);
-        if (!selection) {
-            vscode.window.showErrorMessage('No text selected');
-            return;
-        }
+            const selection = editor.document.getText(editor.selection);
+            if (!selection) {
+                vscode.window.showErrorMessage('No text selected');
+                return;
+            }
 
-        // Open chat and pre-fill with comparison request
-        await vscode.commands.executeCommand('workbench.panel.chatSidebar.copilot');
-        await vscode.commands.executeCommand('workbench.action.chat.open', {
-            query: `@aicompare /compare Explain and improve this code:\n\`\`\`\n${selection}\n\`\`\``
-        });
+            // Try to open chat with different approaches
+            try {
+                // First try to open the chat panel
+                await vscode.commands.executeCommand('workbench.action.chat.open');
+                
+                // Small delay to ensure chat is ready
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Try to insert the command
+                await vscode.commands.executeCommand('workbench.action.chat.open', {
+                    query: `@aicompare /compare Explain and improve this code:\n\`\`\`\n${selection}\n\`\`\``
+                });
+            } catch (chatError) {
+                // Fallback: copy to clipboard and show instructions
+                await vscode.env.clipboard.writeText(
+                    `@aicompare /compare Explain and improve this code:\n\`\`\`\n${selection}\n\`\`\``
+                );
+                
+                const message = await vscode.window.showInformationMessage(
+                    'AI Compare command copied to clipboard. Open the chat panel and paste to compare.',
+                    'Open Chat Panel',
+                    'OK'
+                );
+                
+                if (message === 'Open Chat Panel') {
+                    // Try to open chat panel
+                    vscode.commands.executeCommand('aicompare.openPanel');
+                }
+            }
+        } catch (error) {
+            console.error('Error in compareSelection command:', error);
+            vscode.window.showErrorMessage(
+                `Failed to compare selection: ${error instanceof Error ? error.message : 'Unknown error'}`
+            );
+        }
     });
 
     // Add to subscriptions
