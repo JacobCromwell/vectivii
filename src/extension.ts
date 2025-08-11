@@ -43,6 +43,11 @@ export function activate(context: vscode.ExtensionContext) {
                     prompt: 'Explain this code concept',
                     label: '💡 Get Explanations',
                     command: 'explain'
+                },
+                {
+                    prompt: 'Get a single GPT-4o response with summary',
+                    label: '🎯 Single Trail',
+                    command: 'singletrail'
                 }
             ];
         }
@@ -87,7 +92,7 @@ export function activate(context: vscode.ExtensionContext) {
                         'To use AI Compare:\n' +
                         '1. Open Chat panel (Ctrl+Alt+I or Cmd+Alt+I)\n' +
                         '2. Type @aicompare followed by your question\n' +
-                        '3. Use commands like /compare, /analyze, or /explain'
+                        '3. Use commands like /compare, /analyze, /explain, or /singletrail'
                     );
                 }
             } else {
@@ -182,46 +187,77 @@ async function handleChatRequest(
         stream.markdown('- `/compare` - Compare solutions from multiple AI models\n');
         stream.markdown('- `/analyze` - Analyze differences between responses\n');
         stream.markdown('- `/explain` - Get explanations from both models\n');
+        stream.markdown('- `/singletrail` - Get a single GPT-4o response with summary\n');
         return;
     }
-
-    // Show initial progress
-    stream.markdown('🤖 **Comparing AI Models...**\n\n');
-    stream.progress('Querying GPT-4o and Claude 3.5 Sonnet...');
 
     try {
         let responses;
         
         switch (command) {
             case 'compare':
+                // Show initial progress
+                stream.markdown('🤖 **Comparing AI Models...**\n\n');
+                stream.progress('Querying GPT-4o and Claude 3.5 Sonnet...');
+                
                 responses = await aiService.compareModels(prompt, token);
                 await formatter.formatComparison(responses, stream);
                 break;
                 
             case 'analyze':
+                // Show initial progress
+                stream.markdown('🤖 **Comparing AI Models...**\n\n');
+                stream.progress('Querying GPT-4o and Claude 3.5 Sonnet...');
+                
                 responses = await aiService.compareModels(prompt, token);
                 await formatter.formatAnalysis(responses, stream);
                 break;
                 
             case 'explain':
+                // Show initial progress
+                stream.markdown('🤖 **Comparing AI Models...**\n\n');
+                stream.progress('Querying GPT-4o and Claude 3.5 Sonnet...');
+                
                 const explainPrompt = `Explain this concept step by step with examples: ${prompt}`;
                 responses = await aiService.compareModels(explainPrompt, token);
                 await formatter.formatExplanations(responses, stream);
                 break;
                 
-            default:
-                // Default to comparison
-                responses = await aiService.compareModels(prompt, token);
-                await formatter.formatComparison(responses, stream);
+            case 'singletrail':
+                // Show initial progress - FIXED: Only mention GPT-4o
+                stream.markdown('🎯 **Single Trail - GPT-4o Response...**\n\n');
+                stream.progress('Querying GPT-4o...');
+                
+                // FIXED: Use getSingleGPTResponse instead of compareModels
+                responses = await aiService.getSingleGPTResponse(prompt, token);
+                await formatter.formatSingleTrail(responses, stream);
                 break;
+                
+            default:
+                responses = [];
+                break;
+                // Default to comparison
+                // Show initial progress
+                // stream.markdown('🤖 **Comparing AI Models...**\n\n');
+                // stream.progress('Querying GPT-4o and Claude 3.5 Sonnet...');
+                
+                // responses = await aiService.compareModels(prompt, token);
+                // await formatter.formatComparison(responses, stream);
+                // break;
         }
 
         // Add followup suggestions
-        if (responses.length >= 2) {
+        if (responses.length >= 1) {
             stream.markdown('\n---\n\n💡 **Next Steps:**\n');
-            stream.markdown('- Ask me to explain any differences you notice\n');
-            stream.markdown('- Request code improvements or optimizations\n');
-            stream.markdown('- Compare different approaches to the same problem\n');
+            if (command === 'singletrail') {
+                stream.markdown('- Try `/compare` to see how Claude would approach this\n');
+                stream.markdown('- Use `/analyze` to get detailed comparison insights\n');
+                stream.markdown('- Ask me to explain any specific parts in detail\n');
+            } else {
+                stream.markdown('- Ask me to explain any differences you notice\n');
+                stream.markdown('- Request code improvements or optimizations\n');
+                stream.markdown('- Compare different approaches to the same problem\n');
+            }
         }
 
     } catch (error) {
