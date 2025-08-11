@@ -48,6 +48,10 @@
           {
             "name": "explain",
             "description": "Get explanations from both models"
+          },
+          {
+            "name": "singletrail",
+            "description": "Get a single GPT-4o response with detailed summary"
           }
         ]
       }

@@ -229,7 +229,7 @@ export class AnalysisService {
         return analysis;
     }
 
-    private extractCodeBlocksFromText(text: string): CodeBlock[] {
+    public extractCodeBlocksFromText(text: string): CodeBlock[] {
         const codeBlockRegex = /```(\w+)?\s*\n([\s\S]*?)\n```/g;
         const blocks: CodeBlock[] = [];
         let match;
