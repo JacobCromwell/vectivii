@@ -161,9 +161,35 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // Register global slash command: /singletrail (works without @aicompare)
+    // Requires VS Code >= 1.103
+    const singleTrailSlash = vscode.commands.registerCommand(
+        'singletrail',
+        async (
+            request: vscode.ChatRequest,
+            context: vscode.ChatContext,
+            stream: vscode.ChatResponseStream,
+            token: vscode.CancellationToken
+        ) => {
+            try {
+                stream.markdown('🎯 **Single Trail - GPT-4o Response...**\n\n');
+                stream.progress('Querying GPT-4o...');
+
+                const responses = await aiService.getSingleGPTResponse(request.prompt, token);
+                await formatter.formatSingleTrail(responses, stream);
+
+                stream.markdown('\n---\n\n💡 Next: Try `/compare` or `/analyze` for multi-model insights.');
+            } catch (error) {
+                console.error('Global /singletrail error:', error);
+                stream.markdown(`❌ **Error**: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+            }
+        }
+    );
+
     // Add to subscriptions
     context.subscriptions.push(
         participant,
+        singleTrailSlash,
         openPanelCommand,
         compareSelectionCommand
     );

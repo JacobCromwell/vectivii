@@ -88,7 +88,8 @@ export class ResponseFormatter {
         }
 
         // Header
-        stream.markdown(`# 🎯 Single Trail Response\n\n`);
+        stream.markdown(`# 🎯 Single Trail Response 04...\n\n`);
+        //throw new Error('forced error');
         
         // Main response
         stream.markdown(`## ${this.getModelIcon(response.model)} ${response.model}\n\n`);

@@ -3,15 +3,20 @@
   "displayName": "vectivii",
   "description": "Compare coding solutions from multiple AI models (GPT-4o vs Claude 3.5 Sonnet)",
   "version": "1.0.0",
-  "icon": "images/icon.png",
+  "publisher": "JacobCromwellWorks",
+  "icon": "./images/icon.png",
   "author": "Jacob Cromwell",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/JacobCromwell/vectasight.git"
   },
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.103.0"
   },
+  "activationEvents": [
+    "onChatParticipant:aicompare.assistant",
+    "onChatSlashCommand:singletrail"
+  ],
   "categories": [
     "AI",
     "Other",
@@ -26,7 +31,9 @@
     "coding",
     "assistant"
   ],
-  "activationEvents": [],
+  "extensionDependencies": [
+    "github.copilot-chat"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "chatParticipants": [
@@ -107,7 +114,14 @@
           "description": "Include response metrics (length, code blocks, etc.)"
         }
       }
-    }
+    },
+    "chatSlashCommands": [
+      {
+        "command": "singletrail",
+        "title": "Single Trail",
+        "description": "Get a single GPT-4o response with detailed summary"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
@@ -121,7 +135,7 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.102.0",
+    "@types/vscode": "^1.103.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@typescript-eslint/eslint-plugin": "^8.39.0",

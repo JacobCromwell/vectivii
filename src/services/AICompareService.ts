@@ -15,11 +15,11 @@ export interface AIResponse {
 export class AICompareService {
     private responses: AIResponse[] = [];
 
-    constructor(private configService: ConfigurationService) {}
+    constructor(private configService: ConfigurationService) { }
 
     async compareModels(prompt: string, token: vscode.CancellationToken): Promise<AIResponse[]> {
         this.responses = [];
-        
+
         const promises: Promise<void>[] = [];
 
         // Always try both Copilot models
@@ -36,30 +36,32 @@ export class AICompareService {
 
         // Wait for all responses (with timeout)
         await Promise.allSettled(promises);
-        
+
         // Sort responses by timestamp
         this.responses.sort((a, b) => a.timestamp - b.timestamp);
-        
+
         return this.responses;
     }
 
     async getSingleGPTResponse(prompt: string, token: vscode.CancellationToken): Promise<AIResponse[]> {
         this.responses = [];
-        
         // Only get GPT-4o response, with fallback to Claude if it fails
-        await this.getCopilotGPTResponseWithContext(prompt, token);
-        
-        // If GPT failed, try Claude as fallback
-        // if (this.responses.length === 0 || this.responses[0].error) {
-        //     await this.getCopilotClaudeResponseWithContext(prompt, token);
-        // }
-        
+        //await this.getCopilotGPTResponseWithContext(prompt, token);
+
+        // TODO make this dynamic
+        const modelSelector = {
+            vendor: 'copilot',
+            family: 'gpt-4o'
+        }
+
+        await this.getModelResponseWithContext(modelSelector, prompt, token);
+
         return this.responses;
     }
 
     private async getCopilotGPTResponse(prompt: string, token: vscode.CancellationToken): Promise<void> {
         const startTime = Date.now();
-        
+
         try {
             // Request user consent and select GPT model
             const models = await vscode.lm.selectChatModels({
@@ -77,7 +79,7 @@ export class AICompareService {
             ];
 
             const response = await model.sendRequest(messages, {}, token);
-            
+
             let fullResponse = '';
             for await (const chunk of response.text) {
                 if (token.isCancellationRequested) {
@@ -99,13 +101,13 @@ export class AICompareService {
 
         } catch (error) {
             console.error('Error with Copilot GPT:', error);
-            
+
             const endTime = Date.now();
-            const errorMessage = error instanceof vscode.LanguageModelError 
+            const errorMessage = error instanceof vscode.LanguageModelError
                 ? this.handleLanguageModelError(error)
-                : error instanceof Error 
-                ? error.message 
-                : 'Unknown error occurred';
+                : error instanceof Error
+                    ? error.message
+                    : 'Unknown error occurred';
 
             this.responses.push({
                 provider: 'GitHub Copilot',
@@ -118,27 +120,23 @@ export class AICompareService {
         }
     }
 
-    private async getCopilotGPTResponseWithContext(prompt: string, token: vscode.CancellationToken): Promise<void> {
+    private async getModelResponseWithContext(modelSelector: { vendor: string; family: string; }, prompt: string, token: vscode.CancellationToken): Promise<void> {
         const startTime = Date.now();
-        
+
         try {
-            // Request user consent and select GPT model
-            const models = await vscode.lm.selectChatModels({
-                vendor: 'copilot',
-                family: 'gpt-4o'
-            });
+            const models = await vscode.lm.selectChatModels(modelSelector);
 
             if (models.length === 0) {
-                throw new Error('GPT-4o model not available. Please check your GitHub Copilot subscription.');
+                throw new Error('Model not available. Please check your GitHub Copilot subscription.');
             }
 
             const model = models[0];
-            
+
             // Build messages with context
             const messages = await this.buildMessagesWithContext(prompt);
 
             const response = await model.sendRequest(messages, {}, token);
-            
+
             let fullResponse = '';
             for await (const chunk of response.text) {
                 if (token.isCancellationRequested) {
@@ -160,13 +158,13 @@ export class AICompareService {
 
         } catch (error) {
             console.error('Error with Copilot GPT:', error);
-            
+
             const endTime = Date.now();
-            const errorMessage = error instanceof vscode.LanguageModelError 
+            const errorMessage = error instanceof vscode.LanguageModelError
                 ? this.handleLanguageModelError(error)
-                : error instanceof Error 
-                ? error.message 
-                : 'Unknown error occurred';
+                : error instanceof Error
+                    ? error.message
+                    : 'Unknown error occurred';
 
             this.responses.push({
                 provider: 'GitHub Copilot',
@@ -179,9 +177,70 @@ export class AICompareService {
         }
     }
 
+    // private async getCopilotGPTResponseWithContext(prompt: string, token: vscode.CancellationToken): Promise<void> {
+    //     const startTime = Date.now();
+
+    //     try {
+    //         // Request user consent and select GPT model
+    //         const models = await vscode.lm.selectChatModels({
+    //             vendor: 'copilot',
+    //             family: 'gpt-4o'
+    //         });
+
+    //         if (models.length === 0) {
+    //             throw new Error('GPT-4o model not available. Please check your GitHub Copilot subscription.');
+    //         }
+
+    //         const model = models[0];
+
+    //         // Build messages with context
+    //         const messages = await this.buildMessagesWithContext(prompt);
+
+    //         const response = await model.sendRequest(messages, {}, token);
+
+    //         let fullResponse = '';
+    //         for await (const chunk of response.text) {
+    //             if (token.isCancellationRequested) {
+    //                 throw new Error('Request cancelled');
+    //             }
+    //             fullResponse += chunk;
+    //         }
+
+    //         const endTime = Date.now();
+
+    //         this.responses.push({
+    //             provider: 'GitHub Copilot',
+    //             model: `GPT-4o`,
+    //             response: fullResponse,
+    //             timestamp: startTime,
+    //             responseTime: endTime - startTime,
+    //             tokenCount: this.estimateTokenCount(fullResponse)
+    //         });
+
+    //     } catch (error) {
+    //         console.error('Error with Copilot GPT:', error);
+
+    //         const endTime = Date.now();
+    //         const errorMessage = error instanceof vscode.LanguageModelError 
+    //             ? this.handleLanguageModelError(error)
+    //             : error instanceof Error 
+    //             ? error.message 
+    //             : 'Unknown error occurred';
+
+    //         this.responses.push({
+    //             provider: 'GitHub Copilot',
+    //             model: 'GPT-4o (Error)',
+    //             response: '',
+    //             timestamp: startTime,
+    //             responseTime: endTime - startTime,
+    //             error: errorMessage
+    //         });
+    //     }
+    // }
+
     private async getCopilotClaudeResponseWithContext(prompt: string, token: vscode.CancellationToken): Promise<void> {
         const startTime = Date.now();
-        
+
         try {
             // Request user consent and select Claude model
             const models = await vscode.lm.selectChatModels({
@@ -194,12 +253,12 @@ export class AICompareService {
             }
 
             const model = models[0];
-            
+
             // Build messages with context
             const messages = await this.buildMessagesWithContext(prompt);
 
             const response = await model.sendRequest(messages, {}, token);
-            
+
             let fullResponse = '';
             for await (const chunk of response.text) {
                 if (token.isCancellationRequested) {
@@ -221,13 +280,13 @@ export class AICompareService {
 
         } catch (error) {
             console.error('Error with Copilot Claude:', error);
-            
+
             const endTime = Date.now();
-            const errorMessage = error instanceof vscode.LanguageModelError 
+            const errorMessage = error instanceof vscode.LanguageModelError
                 ? this.handleLanguageModelError(error)
-                : error instanceof Error 
-                ? error.message 
-                : 'Unknown error occurred';
+                : error instanceof Error
+                    ? error.message
+                    : 'Unknown error occurred';
 
             this.responses.push({
                 provider: 'GitHub Copilot',
@@ -241,71 +300,35 @@ export class AICompareService {
     }
 
     private async buildMessagesWithContext(prompt: string): Promise<vscode.LanguageModelChatMessage[]> {
+        // Get current editor information
+        let contextInfo = '';
+        const editor = vscode.window.activeTextEditor;
+        
+        if (editor) {
+            // Add file name and language
+            contextInfo += `Current file: ${editor.document.fileName}\n`;
+            contextInfo += `Language: ${editor.document.languageId}\n`;
+            
+            // Add selection if present
+            const selection = editor.selection;
+            if (!selection.isEmpty) {
+                const selectedText = editor.document.getText(selection);
+                contextInfo += `\nSelected code:\n\`\`\`${editor.document.languageId}\n${selectedText}\n\`\`\`\n`;
+            }
+        }
+
         const messages: vscode.LanguageModelChatMessage[] = [];
         
-        // Add system context about the current environment
-        let contextInfo = '';
+        // Add assistant context message
+        messages.push(vscode.LanguageModelChatMessage.Assistant(
+            "I'm an AI assistant in the AI Compare extension. I'll help with coding questions clearly and concisely."
+        ));
         
-        try {
-            // Get active editor and selection
-            const activeEditor = vscode.window.activeTextEditor;
-            if (activeEditor) {
-                const document = activeEditor.document;
-                const selection = activeEditor.selection;
-                
-                // Add file context
-                contextInfo += `Current file: ${document.fileName}\n`;
-                contextInfo += `Language: ${document.languageId}\n`;
-                
-                // Add selected text if any
-                if (!selection.isEmpty) {
-                    const selectedText = document.getText(selection);
-                    contextInfo += `\nSelected code:\n\`\`\`${document.languageId}\n${selectedText}\n\`\`\`\n`;
-                } else {
-                    // If no selection, provide some context around cursor
-                    const cursorPosition = selection.active;
-                    const startLine = Math.max(0, cursorPosition.line - 10);
-                    const endLine = Math.min(document.lineCount - 1, cursorPosition.line + 10);
-                    const contextRange = new vscode.Range(startLine, 0, endLine, document.lineAt(endLine).text.length);
-                    const contextText = document.getText(contextRange);
-                    
-                    contextInfo += `\nContext around cursor (lines ${startLine + 1}-${endLine + 1}):\n\`\`\`${document.languageId}\n${contextText}\n\`\`\`\n`;
-                }
-                
-                // Add visible range context if it's different from selection
-                const visibleRanges = activeEditor.visibleRanges;
-                if (visibleRanges.length > 0 && selection.isEmpty) {
-                    const visibleText = document.getText(visibleRanges[0]);
-                    if (visibleText.length > 0 && visibleText.length < 2000) { // Reasonable size limit
-                        contextInfo += `\nVisible code:\n\`\`\`${document.languageId}\n${visibleText}\n\`\`\`\n`;
-                    }
-                }
-            }
-            
-            // Add workspace context
-            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-            if (workspaceFolder) {
-                contextInfo += `\nWorkspace: ${workspaceFolder.name}\n`;
-            }
-            
-            // Add open files context (file names only, not content)
-            const openDocuments = vscode.workspace.textDocuments
-                .filter(doc => !doc.isUntitled && doc.uri.scheme === 'file')
-                .map(doc => doc.fileName)
-                .slice(0, 10); // Limit to avoid too much context
-                
-            if (openDocuments.length > 0) {
-                contextInfo += `\nOpen files: ${openDocuments.join(', ')}\n`;
-            }
-            
-        } catch (error) {
-            console.warn('Error gathering context:', error);
-            contextInfo += '\n(Context gathering failed)\n';
-        }
-        
-        // Add context as system message if we have any
-        if (contextInfo.trim()) {
-            messages.push(vscode.LanguageModelChatMessage.User(`Context:\n${contextInfo}\n---\n\nUser request: ${prompt}`));
+        // Add context + user prompt
+        if (contextInfo) {
+            messages.push(vscode.LanguageModelChatMessage.User(
+                `${contextInfo}\n\nUser request: ${prompt}`
+            ));
         } else {
             messages.push(vscode.LanguageModelChatMessage.User(prompt));
         }
@@ -315,7 +338,7 @@ export class AICompareService {
 
     private async getCopilotClaudeResponse(prompt: string, token: vscode.CancellationToken): Promise<void> {
         const startTime = Date.now();
-        
+
         try {
             // Request user consent and select Claude model
             const models = await vscode.lm.selectChatModels({
@@ -333,7 +356,7 @@ export class AICompareService {
             ];
 
             const response = await model.sendRequest(messages, {}, token);
-            
+
             let fullResponse = '';
             for await (const chunk of response.text) {
                 if (token.isCancellationRequested) {
@@ -355,13 +378,13 @@ export class AICompareService {
 
         } catch (error) {
             console.error('Error with Copilot Claude:', error);
-            
+
             const endTime = Date.now();
-            const errorMessage = error instanceof vscode.LanguageModelError 
+            const errorMessage = error instanceof vscode.LanguageModelError
                 ? this.handleLanguageModelError(error)
-                : error instanceof Error 
-                ? error.message 
-                : 'Unknown error occurred';
+                : error instanceof Error
+                    ? error.message
+                    : 'Unknown error occurred';
 
             this.responses.push({
                 provider: 'GitHub Copilot',
@@ -376,7 +399,7 @@ export class AICompareService {
 
     private async getGoogleGeminiResponse(prompt: string, apiKey: string, token: vscode.CancellationToken): Promise<void> {
         const startTime = Date.now();
-        
+
         try {
             const postData = JSON.stringify({
                 contents: [{ parts: [{ text: prompt }] }],
@@ -399,7 +422,7 @@ export class AICompareService {
                 token
             );
 
-            const data = JSON.parse(responseText) as { 
+            const data = JSON.parse(responseText) as {
                 candidates?: Array<{
                     content?: {
                         parts?: Array<{ text?: string }>;
@@ -411,9 +434,9 @@ export class AICompareService {
             if (data.error) {
                 throw new Error(`Google API error: ${data.error.message}`);
             }
-            
+
             const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated';
-            
+
             const endTime = Date.now();
 
             this.responses.push({
@@ -427,7 +450,7 @@ export class AICompareService {
 
         } catch (error) {
             console.error('Error with Google Gemini:', error);
-            
+
             const endTime = Date.now();
             const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
 
@@ -443,14 +466,14 @@ export class AICompareService {
     }
 
     private makeHttpsRequest(
-        url: string, 
-        options: { method: string; headers: { [key: string]: string | number } }, 
+        url: string,
+        options: { method: string; headers: { [key: string]: string | number } },
         postData: string,
         token: vscode.CancellationToken
     ): Promise<string> {
         return new Promise((resolve, reject) => {
             const urlObj = new URL(url);
-            
+
             const req = https.request({
                 hostname: urlObj.hostname,
                 port: urlObj.port || 443,
@@ -459,11 +482,11 @@ export class AICompareService {
                 headers: options.headers
             }, (res) => {
                 let data = '';
-                
+
                 res.on('data', (chunk) => {
                     data += chunk;
                 });
-                
+
                 res.on('end', () => {
                     if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
                         resolve(data);
@@ -490,7 +513,7 @@ export class AICompareService {
             if (postData) {
                 req.write(postData);
             }
-            
+
             req.end();
         });
     }
@@ -499,7 +522,7 @@ export class AICompareService {
         // Since the specific error codes don't exist in the current VS Code API,
         // we'll handle it based on the error message or use a general approach
         const message = error.message.toLowerCase();
-        
+
         if (message.includes('access') || message.includes('subscription')) {
             return 'No access to this model. Please check your GitHub Copilot subscription.';
         } else if (message.includes('throttl') || message.includes('rate limit')) {
