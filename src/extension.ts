@@ -1,272 +1,203 @@
 import * as vscode from 'vscode';
-import { AICompareService } from './services/AICompareService';
-import { ResponseFormatter } from './services/ResponseFormatter';
-import { ConfigurationService } from './services/ConfigurationService';
+import * as path from 'path';
 
+// This is a temporary, in-memory store for model responses.
+// In a real-world scenario, this might need to be more robust
+// or use the extension's `workspaceState` for persistence.
+const comparisonData: { [key: string]: string } = {};
+
+// This method is called when your extension is activated
 export function activate(context: vscode.ExtensionContext) {
-    console.log('AI Code Compare extension is now active!');
+	console.log('Congratulations, your extension "modelbase" is now active!');
 
-    // Initialize services
-    const configService = new ConfigurationService();
-    const aiService = new AICompareService(configService);
-    const formatter = new ResponseFormatter(configService);
+	// Register the chat participant that will orchestrate the model comparison.
+	// This participant is the entry point for the entire workflow.
+	const compareParticipant = vscode.chat.createChatParticipant('jacob.compare', compareRequestHandler);
 
-    // Register the chat participant
-    const participant = vscode.chat.createChatParticipant(
-        'aicompare.assistant', 
-        async (request, context, stream, token) => {
-            try {
-                await handleChatRequest(request, context, stream, token, aiService, formatter);
-            } catch (error) {
-                console.error('Chat request error:', error);
-                stream.markdown(`❌ **Error**: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
-            }
-        }
-    );
+	// Register a command to show the comparison Webview. This command will be
+	// triggered by a button in the chat response.
+	const showComparisonCommand = vscode.commands.registerCommand('jacob.showComparisonView', () => {
+		showComparisonWebview(context);
+	});
 
-    // Set participant properties
-    participant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'images', 'robot.png');
-    participant.followupProvider = {
-        provideFollowups(result, context, token) {
-            return [
-                {
-                    prompt: 'Compare this code solution across multiple models',
-                    label: '🔄 Compare Solutions',
-                    command: 'compare'
-                },
-                {
-                    prompt: 'Analyze the differences between responses',
-                    label: '📊 Analyze Differences',
-                    command: 'analyze'
-                },
-                {
-                    prompt: 'Explain this code concept',
-                    label: '💡 Get Explanations',
-                    command: 'explain'
-                },
-                {
-                    prompt: 'Get a single GPT-4o response with summary',
-                    label: '🎯 Single Trail',
-                    command: 'singletrail'
-                }
-            ];
-        }
-    };
-
-    // Register commands with proper error handling
-    const openPanelCommand = vscode.commands.registerCommand('aicompare.openPanel', async () => {
-        try {
-            // Try multiple command variations to open chat
-            const chatCommands = [
-                'workbench.panel.chat.view.copilot.focus',
-                'workbench.action.chat.open',
-                'workbench.panel.chat',
-                'github.copilot.interactiveSession.focus',
-                'workbench.action.toggleChatSidebar'
-            ];
-
-            let commandExecuted = false;
-            
-            for (const command of chatCommands) {
-                try {
-                    await vscode.commands.executeCommand(command);
-                    commandExecuted = true;
-                    console.log(`Successfully executed command: ${command}`);
-                    break;
-                } catch (error) {
-                    console.log(`Command ${command} failed:`, error);
-                    continue;
-                }
-            }
-
-            if (!commandExecuted) {
-                // Fallback: Show information about how to access the chat
-                const selection = await vscode.window.showInformationMessage(
-                    'Unable to open chat automatically. Please open the chat panel manually.',
-                    'Show Instructions',
-                    'OK'
-                );
-                
-                if (selection === 'Show Instructions') {
-                    vscode.window.showInformationMessage(
-                        'To use AI Compare:\n' +
-                        '1. Open Chat panel (Ctrl+Alt+I or Cmd+Alt+I)\n' +
-                        '2. Type @aicompare followed by your question\n' +
-                        '3. Use commands like /compare, /analyze, /explain, or /singletrail'
-                    );
-                }
-            } else {
-                // Show success message with instructions
-                const infoMessage = await vscode.window.showInformationMessage(
-                    'Chat panel opened! Use @aicompare to start comparing AI models.',
-                    'Got it'
-                );
-            }
-        } catch (error) {
-            console.error('Error in openPanel command:', error);
-            vscode.window.showErrorMessage(
-                `Failed to open chat panel: ${error instanceof Error ? error.message : 'Unknown error'}`
-            );
-        }
-    });
-
-    const compareSelectionCommand = vscode.commands.registerCommand('aicompare.compareSelection', async () => {
-        try {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor) {
-                vscode.window.showErrorMessage('No active editor found');
-                return;
-            }
-
-            const selection = editor.document.getText(editor.selection);
-            if (!selection) {
-                vscode.window.showErrorMessage('No text selected');
-                return;
-            }
-
-            // Try to open chat with different approaches
-            try {
-                // First try to open the chat panel
-                await vscode.commands.executeCommand('workbench.action.chat.open');
-                
-                // Small delay to ensure chat is ready
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                // Try to insert the command
-                await vscode.commands.executeCommand('workbench.action.chat.open', {
-                    query: `@aicompare /compare Explain and improve this code:\n\`\`\`\n${selection}\n\`\`\``
-                });
-            } catch (chatError) {
-                // Fallback: copy to clipboard and show instructions
-                await vscode.env.clipboard.writeText(
-                    `@aicompare /compare Explain and improve this code:\n\`\`\`\n${selection}\n\`\`\``
-                );
-                
-                const message = await vscode.window.showInformationMessage(
-                    'AI Compare command copied to clipboard. Open the chat panel and paste to compare.',
-                    'Open Chat Panel',
-                    'OK'
-                );
-                
-                if (message === 'Open Chat Panel') {
-                    // Try to open chat panel
-                    vscode.commands.executeCommand('aicompare.openPanel');
-                }
-            }
-        } catch (error) {
-            console.error('Error in compareSelection command:', error);
-            vscode.window.showErrorMessage(
-                `Failed to compare selection: ${error instanceof Error ? error.message : 'Unknown error'}`
-            );
-        }
-    });
-
-    // Add to subscriptions
-    context.subscriptions.push(
-        participant,
-        openPanelCommand,
-        compareSelectionCommand
-    );
+	// Add subscriptions to the context so they are disposed of correctly.
+	context.subscriptions.push(compareParticipant, showComparisonCommand);
 }
 
-async function handleChatRequest(
-    request: vscode.ChatRequest,
-    context: vscode.ChatContext,
-    stream: vscode.ChatResponseStream,
-    token: vscode.CancellationToken,
-    aiService: AICompareService,
-    formatter: ResponseFormatter
-) {
-    const command = request.command;
-    const prompt = request.prompt;
+// The core handler for our orchestrator participant.
+const compareRequestHandler: vscode.ChatRequestHandler = async (
+	request: vscode.ChatRequest,
+	context: vscode.ChatContext,
+	stream: vscode.ChatResponseStream,
+	token: vscode.CancellationToken
+) => {
+	// A simple helper function to write progress updates to the chat stream.
+	const updateProgress = (message: string) => {
+		stream.markdown(message);
+	};
 
-    if (!prompt.trim()) {
-        stream.markdown('Please provide a coding question or request. For example:\n\n');
-        stream.markdown('`@aicompare /compare Write a function to reverse a string`\n\n');
-        stream.markdown('Available commands:\n');
-        stream.markdown('- `/compare` - Compare solutions from multiple AI models\n');
-        stream.markdown('- `/analyze` - Analyze differences between responses\n');
-        stream.markdown('- `/explain` - Get explanations from both models\n');
-        stream.markdown('- `/singletrail` - Get a single GPT-4o response with summary\n');
-        return;
-    }
+	// We'll use this array to store promises for all model requests.
+	const modelPromises: Promise<void>[] = [];
+	const modelIds = ['gpt-4o', 'claude-3.5-sonnet']; // You can add more model IDs here.
 
-    try {
-        let responses;
-        
-        switch (command) {
-            case 'compare':
-                // Show initial progress
-                stream.markdown('🤖 **Comparing AI Models...**\n\n');
-                stream.progress('Querying GPT-4o and Claude 3.5 Sonnet...');
-                
-                responses = await aiService.compareModels(prompt, token);
-                await formatter.formatComparison(responses, stream);
-                break;
-                
-            case 'analyze':
-                // Show initial progress
-                stream.markdown('🤖 **Comparing AI Models...**\n\n');
-                stream.progress('Querying GPT-4o and Claude 3.5 Sonnet...');
-                
-                responses = await aiService.compareModels(prompt, token);
-                await formatter.formatAnalysis(responses, stream);
-                break;
-                
-            case 'explain':
-                // Show initial progress
-                stream.markdown('🤖 **Comparing AI Models...**\n\n');
-                stream.progress('Querying GPT-4o and Claude 3.5 Sonnet...');
-                
-                const explainPrompt = `Explain this concept step by step with examples: ${prompt}`;
-                responses = await aiService.compareModels(explainPrompt, token);
-                await formatter.formatExplanations(responses, stream);
-                break;
-                
-            case 'singletrail':
-                // Show initial progress - FIXED: Only mention GPT-4o
-                stream.markdown('🎯 **Single Trail - GPT-4o Response...**\n\n');
-                stream.progress('Querying GPT-4o...');
-                
-                // FIXED: Use getSingleGPTResponse instead of compareModels
-                responses = await aiService.getSingleGPTResponse(prompt, token);
-                await formatter.formatSingleTrail(responses, stream);
-                break;
-                
-            default:
-                responses = [];
-                break;
-                // Default to comparison
-                // Show initial progress
-                // stream.markdown('🤖 **Comparing AI Models...**\n\n');
-                // stream.progress('Querying GPT-4o and Claude 3.5 Sonnet...');
-                
-                // responses = await aiService.compareModels(prompt, token);
-                // await formatter.formatComparison(responses, stream);
-                // break;
-        }
+	updateProgress('Starting multi-model comparison...');
+	
+	// Clear the comparison data from the previous run.
+	for (const key in comparisonData) {
+		delete comparisonData[key];
+	}
 
-        // Add followup suggestions
-        if (responses.length >= 1) {
-            stream.markdown('\n---\n\n💡 **Next Steps:**\n');
-            if (command === 'singletrail') {
-                stream.markdown('- Try `/compare` to see how Claude would approach this\n');
-                stream.markdown('- Use `/analyze` to get detailed comparison insights\n');
-                stream.markdown('- Ask me to explain any specific parts in detail\n');
-            } else {
-                stream.markdown('- Ask me to explain any differences you notice\n');
-                stream.markdown('- Request code improvements or optimizations\n');
-                stream.markdown('- Compare different approaches to the same problem\n');
-            }
-        }
+	for (const modelId of modelIds) {
+		modelPromises.push(new Promise<void>(async (resolve) => {
+			if (token.isCancellationRequested) {
+				updateProgress(`\n\nComparison for ${modelId} was cancelled.`);
+				resolve();
+				return;
+			}
+			
+			updateProgress(`\n\nQuerying model: \`@${modelId}\`\n\n`);
 
-    } catch (error) {
-        console.error('Error in chat request:', error);
-        stream.markdown(`\n❌ **Error**: ${error instanceof Error ? error.message : 'Unknown error occurred'}\n\n`);
-        stream.markdown('Please try again or check your GitHub Copilot subscription.');
-    }
+			try {
+				// Select the chat model by its ID. This is the key to the orchestrator pattern.
+				const [model] = await vscode.lm.selectChatModels({ family: modelId });
+
+				if (!model) {
+					stream.markdown(`Could not find model: ${modelId}`);
+					resolve();
+					return;
+				}
+
+				// Construct the chat messages, ensuring we pass the user's prompt.
+				const chatMessages = [vscode.LanguageModelChatMessage.User(request.prompt)];
+				
+				// Send the request and stream the response.
+				const chatResponse = await model.sendRequest(chatMessages, {}, token);
+				let fullResponse = '';
+
+				for await (const fragment of chatResponse.text) {
+					// We can stream a simplified progress to the user here.
+					// Note: This will not be a character-by-character stream for each model,
+					// but rather a quick burst of updates as the stream chunks arrive.
+					stream.markdown(fragment);
+					fullResponse += fragment;
+				}
+				
+				// Store the full response for the comparison Webview.
+				comparisonData[modelId] = fullResponse;
+
+			} catch (error) {
+				console.error(`Error querying model ${modelId}:`, error);
+				stream.markdown(`\n\n**Error:** Failed to get a response from \`@${modelId}\`.\n\n`);
+			} finally {
+				resolve();
+			}
+		}));
+	}
+
+	// Wait for all model requests to complete.
+	await Promise.all(modelPromises);
+
+	// Once all responses are collected, add a follow-up button to view the comparison.
+	stream.button({
+		command: 'jacob.showComparisonView',
+		title: 'View Side-by-Side Comparison'
+	});
+
+	return;
+};
+
+
+// Function to create and show the Webview panel.
+function showComparisonWebview(context: vscode.ExtensionContext) {
+	const panel = vscode.window.createWebviewPanel(
+		'jacobComparisonView', // Identifies the type of the webview
+		'Model Comparison Results', // Title of the panel displayed to the user
+		vscode.ViewColumn.Two, // Editor column to show the new webview panel in
+		{
+			// Enable scripts in the webview
+			enableScripts: true,
+			// Restrict the webview to only loading content from our extension's directory
+			localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, 'media'))]
+		}
+	);
+
+	// Get the path to the HTML file for the webview.
+	const webviewHtmlPath = path.join(context.extensionPath, 'media', 'webview.html');
+	// Set the HTML content for the webview.
+	panel.webview.html = getWebviewContent(panel.webview, context, webviewHtmlPath);
+
+	// Handle messages from the webview.
+	panel.webview.onDidReceiveMessage(message => {
+		switch (message.command) {
+			case 'ready':
+				// Once the webview is ready, send the comparison data to it.
+				panel.webview.postMessage({
+					command: 'updateData',
+					data: comparisonData
+				});
+				break;
+		}
+	});
 }
 
-export function deactivate() {
-    console.log('AI Code Compare extension deactivated');
+// Function to get the HTML content for the webview.
+function getWebviewContent(webview: vscode.Webview, context: vscode.ExtensionContext, htmlPath: string): string {
+	const htmlUri = vscode.Uri.file(htmlPath);
+	const htmlContent = vscode.workspace.fs.readFile(htmlUri);
+	
+	const toolkitUri = webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@vscode/webview-ui-toolkit', 'dist', 'toolkit.js'));
+
+	return `
+		<!DOCTYPE html>
+		<html lang="en">
+		<head>
+			<meta charset="UTF-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<title>Model Comparison</title>
+			<script type="module" src="${toolkitUri}"></script>
+			<style>
+				body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; }
+				.comparison-container { display: flex; gap: 20px; padding: 20px; }
+				.model-card { flex: 1; border: 1px solid var(--vscode-dropdown-border); border-radius: var(--vscode-editor-pane-background); padding: 10px; background-color: var(--vscode-sideBar-background); }
+				h2 { font-size: 1.2em; border-bottom: 1px solid var(--vscode-separator-border); padding-bottom: 5px; }
+				pre { white-space: pre-wrap; word-wrap: break-word; }
+			</style>
+		</head>
+		<body>
+			<h1>Multi-Model Comparison</h1>
+			<p>Here are the responses from the different language models.</p>
+			<div id="results" class="comparison-container"></div>
+
+			<script>
+				const vscode = acquireVsCodeApi();
+
+				window.addEventListener('message', event => {
+					const message = event.data;
+					if (message.command === 'updateData') {
+						const resultsDiv = document.getElementById('results');
+						resultsDiv.innerHTML = '';
+						for (const modelId in message.data) {
+							const card = document.createElement('div');
+							card.className = 'model-card';
+							card.innerHTML = \`
+								<h2>Model: \${modelId}</h2>
+								<pre>\${message.data[modelId]}</pre>
+							\`;
+							resultsDiv.appendChild(card);
+						}
+					}
+				});
+
+				// Let the extension know the webview is ready to receive data
+				window.addEventListener('load', () => {
+					vscode.postMessage({ command: 'ready' });
+				});
+			</script>
+		</body>
+		</html>
+	`;
 }
+
+
+// This method is called when your extension is deactivated
+export function deactivate() {}

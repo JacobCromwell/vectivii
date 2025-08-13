@@ -1,8 +1,5 @@
-out
-dist
-node_modules
-.vscode-test/
-*.vsix
 *.js
-*.js.map
-package-lock.json
+./node_modules/*
+modelbase/node_modules/*
+modelbase/package-lock.json
+node_modules
