@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Enhanced Model Comparison</title>
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src {{cspSource}} 'unsafe-inline';">
+	<script type="module" src="{{TOOLKIT_URI}}"></script>
+	<link rel="stylesheet" href="{{STYLE_URI}}">
+</head>
+<body>
+	<div class="header">
+		<h1>Enhanced Model Comparison</h1>
+		<p>Intelligent analysis and side-by-side comparison of language model responses</p>
+	</div>
+
+	<div id="analysisSection" class="analysis-section" style="display: none;">
+		<h2>Analysis Summary</h2>
+		<div id="summaryContent" class="summary-box"></div>
+		
+		<div id="commonElements">
+			<h3>Common Elements</h3>
+			<div id="commonTags" class="tags-container"></div>
+		</div>
+
+		<div id="differences">
+			<h3>Key Differences</h3>
+			<div id="differencesGrid" class="differences-grid"></div>
+		</div>
+
+		<div id="recommendations">
+			<h3>Recommendations</h3>
+			<div id="recommendationsContent" class="summary-box"></div>
+		</div>
+	</div>
+
+	<div id="results" class="comparison-container"></div>
+
+	<div id="loadingSpinner" class="loading-spinner active">
+		<div>🔄 Loading comparison results...</div>
+	</div>
+
+	<div id="emptyState" class="empty-state" style="display: none;">
+		<h3>No Comparison Data Available</h3>
+		<p>Run a model comparison to see results here.</p>
+	</div>
+
+	<script src="{{SCRIPT_URI}}"></script>
+</body>
+</html>

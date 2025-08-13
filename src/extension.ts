@@ -1,5 +1,7 @@
+// src/extension.ts
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 
 // This is a temporary, in-memory store for model responses.
 // In a real-world scenario, this might need to be more robust
@@ -7,7 +9,16 @@ import * as path from 'path';
 const comparisonData: { [key: string]: string } = {};
 let lastPrompt: string = '';
 let comparisonWebviewPanel: vscode.WebviewPanel | undefined;
+let analyzedComparison: any = null;
 
+// Interface for structured comparison analysis
+interface ComparisonAnalysis {
+	summary: string;
+	commonElements: string[];
+	differences: { [modelId: string]: string[] };
+	recommendations: string;
+	structuredData: { [modelId: string]: any };
+}
 
 // This method is called when your extension is activated
 export function activate(context: vscode.ExtensionContext) {
@@ -68,6 +79,16 @@ export function activate(context: vscode.ExtensionContext) {
 				cancellable: false
 			}, async (progress) => {
 				await queryModelAndRefreshWebview(selectedModel.label, context, lastPrompt);
+				// Re-analyze the comparison with the new model
+				await analyzeComparison();
+				// Refresh the webview with new analysis
+				if (comparisonWebviewPanel) {
+					comparisonWebviewPanel.webview.postMessage({
+						command: 'updateAnalysis',
+						analysis: analyzedComparison,
+						data: comparisonData
+					});
+				}
 				vscode.window.showInformationMessage(`Model '${selectedModel.label}' added to comparison.`);
 			});
 		}
@@ -125,6 +146,92 @@ const getFallbackModelIds = async (): Promise<string[]> => {
 		.slice(0, 2)
 		.map(model => model.id);
 };
+
+// Function to analyze and compare responses using one of the available models
+async function analyzeComparison(): Promise<void> {
+	if (Object.keys(comparisonData).length < 2) {
+		return;
+	}
+
+	try {
+		// Get an available model for analysis
+		const availableModels = await vscode.lm.selectChatModels();
+		if (availableModels.length === 0) {
+			return;
+		}
+
+		const analysisModel = availableModels[0]; // Use the first available model
+		const modelIds = Object.keys(comparisonData);
+		const responses = Object.values(comparisonData);
+
+		// Create analysis prompt
+		const analysisPrompt = `
+You are tasked with analyzing and comparing responses from multiple language models. Please provide a structured analysis in JSON format.
+
+Original prompt: "${lastPrompt}"
+
+Model responses:
+${modelIds.map((id, index) => `
+Model ${id}:
+${responses[index]}
+`).join('\n')}
+
+Please analyze these responses and return a JSON object with the following structure:
+{
+	"summary": "A brief summary highlighting key similarities and differences",
+	"commonElements": ["list", "of", "elements", "that", "appear", "in", "most", "responses"],
+	"differences": {
+		"model_id_1": ["unique", "elements", "or", "approaches"],
+		"model_id_2": ["unique", "elements", "or", "approaches"]
+	},
+	"recommendations": "Overall assessment and recommendations based on the comparison",
+	"structuredData": {
+		"model_id_1": {"key_points": ["point1", "point2"], "approach": "description"},
+		"model_id_2": {"key_points": ["point1", "point2"], "approach": "description"}
+	}
+}
+
+Focus on identifying:
+1. Common themes, steps, or recommendations across models
+2. Unique insights or approaches from each model
+3. Areas where models disagree or take different approaches
+4. The overall quality and usefulness of each response
+
+Return only the JSON object, no additional text.`;
+
+		const chatMessages = [vscode.LanguageModelChatMessage.User(analysisPrompt)];
+		const chatResponse = await analysisModel.sendRequest(chatMessages, {}, new vscode.CancellationTokenSource().token);
+
+		let analysisResult = '';
+		for await (const fragment of chatResponse.text) {
+			analysisResult += fragment;
+		}
+
+		// Try to parse the JSON response
+		try {
+			analyzedComparison = JSON.parse(analysisResult);
+		} catch (parseError) {
+			// Fallback if JSON parsing fails
+			analyzedComparison = {
+				summary: "Analysis completed. Please review the responses manually.",
+				commonElements: [],
+				differences: {},
+				recommendations: "Manual review recommended due to analysis parsing error.",
+				structuredData: {}
+			};
+		}
+
+	} catch (error) {
+		console.error('Error analyzing comparison:', error);
+		analyzedComparison = {
+			summary: "Error occurred during analysis.",
+			commonElements: [],
+			differences: {},
+			recommendations: "Manual review recommended due to analysis error.",
+			structuredData: {}
+		};
+	}
+}
 
 // The core handler for our orchestrator participant.
 const compareRequestHandler: vscode.ChatRequestHandler = async (
@@ -219,10 +326,14 @@ const compareRequestHandler: vscode.ChatRequestHandler = async (
 	// Wait for all model requests to complete.
 	await Promise.all(modelPromises);
 
+	// Analyze the comparison results
+	updateProgress('\n\nAnalyzing responses...');
+	await analyzeComparison();
+
 	// Once all responses are collected, add a follow-up button to view the comparison.
 	stream.button({
 		command: 'jacob.showComparisonView',
-		title: 'View Side-by-Side Comparison'
+		title: 'View Enhanced Side-by-Side Comparison'
 	});
 
 	// Add a button to add another model to the comparison
@@ -233,7 +344,6 @@ const compareRequestHandler: vscode.ChatRequestHandler = async (
 
 	return;
 };
-
 
 // Function to create and show the Webview panel.
 function showComparisonWebview(context: vscode.ExtensionContext) {
@@ -258,18 +368,17 @@ function showComparisonWebview(context: vscode.ExtensionContext) {
 		}, null, context.subscriptions);
 	}
 
-	// Get the path to the HTML file for the webview.
-	const webviewHtmlPath = path.join(context.extensionPath, 'media', 'webview.html');
 	// Set the HTML content for the webview.
-	comparisonWebviewPanel.webview.html = getWebviewContent(comparisonWebviewPanel.webview, context, webviewHtmlPath);
+	comparisonWebviewPanel.webview.html = getWebviewContent(comparisonWebviewPanel.webview, context);
 
 	// Handle messages from the webview.
 	comparisonWebviewPanel.webview.onDidReceiveMessage(message => {
 		switch (message.command) {
 			case 'ready':
-				// Once the webview is ready, send the comparison data to it.
+				// Once the webview is ready, send both comparison data and analysis to it.
 				comparisonWebviewPanel?.webview.postMessage({
-					command: 'updateData',
+					command: 'updateAnalysis',
+					analysis: analyzedComparison,
 					data: comparisonData
 				});
 				break;
@@ -310,65 +419,90 @@ async function queryModelAndRefreshWebview(modelId: string, context: vscode.Exte
 	}
 }
 
+// Helper function to read file content
+function readFileContent(filePath: string): string {
+	try {
+		return fs.readFileSync(filePath, 'utf8');
+	} catch (error) {
+		console.error(`Error reading file ${filePath}:`, error);
+		return '';
+	}
+}
 
 // Function to get the HTML content for the webview.
-function getWebviewContent(webview: vscode.Webview, context: vscode.ExtensionContext, htmlPath: string): string {
-	const htmlUri = vscode.Uri.file(htmlPath);
-	const htmlContent = vscode.workspace.fs.readFile(htmlUri);
-
+function getWebviewContent(webview: vscode.Webview, context: vscode.ExtensionContext): string {
+	// Get URIs for resources
 	const toolkitUri = webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'node_modules', '@vscode/webview-ui-toolkit', 'dist', 'toolkit.js'));
+	const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'comparison.css'));
+	const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'comparison.js'));
 
-	return `
+	// Read template HTML (optional - you could also define it here)
+	const templatePath = path.join(context.extensionPath, 'media', 'template.html');
+	let htmlTemplate = readFileContent(templatePath);
+
+	// Fallback HTML template if file doesn't exist
+	if (!htmlTemplate) {
+		htmlTemplate = `
 		<!DOCTYPE html>
 		<html lang="en">
 		<head>
 			<meta charset="UTF-8">
 			<meta name="viewport" content="width=device-width, initial-scale=1.0">
-			<title>Model Comparison</title>
-			<script type="module" src="${toolkitUri}"></script>
-			<style>
-				body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; }
-				.comparison-container { display: flex; gap: 20px; padding: 20px; }
-				.model-card { flex: 1; border: 1px solid var(--vscode-dropdown-border); border-radius: var(--vscode-editor-pane-background); padding: 10px; background-color: var(--vscode-sideBar-background); }
-				h2 { font-size: 1.2em; border-bottom: 1px solid var(--vscode-separator-border); padding-bottom: 5px; }
-				pre { white-space: pre-wrap; word-wrap: break-word; }
-			</style>
+			<title>Enhanced Model Comparison</title>
+			<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src {{cspSource}} 'unsafe-inline';">
+			<script type="module" src="{{TOOLKIT_URI}}"></script>
+			<link rel="stylesheet" href="{{STYLE_URI}}">
 		</head>
 		<body>
-			<h1>Multi-Model Comparison</h1>
-			<p>Here are the responses from the different language models.</p>
+			<div class="header">
+				<h1>FAILED to find html</h1>
+				<h1>Enhanced Model Comparison</h1>
+				<p>Intelligent analysis and side-by-side comparison of language model responses</p>
+			</div>
+
+			<div id="analysisSection" class="analysis-section" style="display: none;">
+				<h2>Analysis Summary</h2>
+				<div id="summaryContent" class="summary-box"></div>
+				
+				<div id="commonElements">
+					<h3>Common Elements</h3>
+					<div id="commonTags" class="tags-container"></div>
+				</div>
+
+				<div id="differences">
+					<h3>Key Differences</h3>
+					<div id="differencesGrid" class="differences-grid"></div>
+				</div>
+
+				<div id="recommendations">
+					<h3>Recommendations</h3>
+					<div id="recommendationsContent" class="summary-box"></div>
+				</div>
+			</div>
+
 			<div id="results" class="comparison-container"></div>
 
-			<script>
-				const vscode = acquireVsCodeApi();
+			<div id="loadingSpinner" class="loading-spinner active">
+				<div>🔄 Loading comparison results...</div>
+			</div>
 
-				window.addEventListener('message', event => {
-					const message = event.data;
-					if (message.command === 'updateData') {
-						const resultsDiv = document.getElementById('results');
-						resultsDiv.innerHTML = '';
-						for (const modelId in message.data) {
-							const card = document.createElement('div');
-							card.className = 'model-card';
-							card.innerHTML = \`
-								<h2>Model: \${modelId}</h2>
-								<pre>\${message.data[modelId]}</pre>
-							\`;
-							resultsDiv.appendChild(card);
-						}
-					}
-				});
+			<div id="emptyState" class="empty-state" style="display: none;">
+				<h3>No Comparison Data Available</h3>
+				<p>Run a model comparison to see results here.</p>
+			</div>
 
-				// Let the extension know the webview is ready to receive data
-				window.addEventListener('load', () => {
-					vscode.postMessage({ command: 'ready' });
-				});
-			</script>
+			<script src="{{SCRIPT_URI}}"></script>
 		</body>
-		</html>
-	`;
-}
+		</html>`;
+	}
 
+	// Replace placeholders with actual URIs
+	return htmlTemplate
+		.replace(/\{\{TOOLKIT_URI\}\}/g, toolkitUri.toString())
+		.replace(/\{\{STYLE_URI\}\}/g, styleUri.toString())
+		.replace(/\{\{SCRIPT_URI\}\}/g, scriptUri.toString())
+		.replace(/\{\{cspSource\}\}/g, webview.cspSource);
+}
 
 // This method is called when your extension is deactivated
 export function deactivate() { }
