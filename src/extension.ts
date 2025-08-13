@@ -36,12 +36,27 @@ const compareRequestHandler: vscode.ChatRequestHandler = async (
 		stream.markdown(message);
 	};
 
-	// We'll use this array to store promises for all model requests.
-	const modelPromises: Promise<void>[] = [];
-	const modelIds = ['gpt-4o', 'claude-3.5-sonnet']; // You can add more model IDs here.
-
 	updateProgress('Starting multi-model comparison...');
 	
+	const availableModels = await vscode.lm.selectChatModels();
+
+	stream.markdown(`Found ${availableModels.length} available language models for comparison.`);
+	stream.markdown(`available models are: ${availableModels.map(model => `\`@${model.id}\``).join(', ')}`);
+
+	// Dynamically get all available chat models.
+	//const availableModels = await vscode.lm.selectChatModels();
+	const modelIds = availableModels
+		.slice(0, 2) // Select the first two available models
+		.map(model => model.id); // Get their IDs
+
+	if (modelIds.length < 2) {
+		stream.markdown('Not enough language models are available for comparison. At least two are required.');
+		return;
+	}
+	
+	// We'll use this array to store promises for all model requests.
+	const modelPromises: Promise<void>[] = [];
+
 	// Clear the comparison data from the previous run.
 	for (const key in comparisonData) {
 		delete comparisonData[key];
