@@ -1,5 +1,9 @@
-*.js
-*.js.map
+./src/*.js
+./src/*.js.map
 ./node_modules/*
 node_modules
-./dist/*
+dist
+dist/*
+dist/*.js
+./dist/*.js.map
+package-lock.json
