@@ -147,29 +147,25 @@ const getFallbackModelIds = async (): Promise<string[]> => {
 		.map(model => model.id);
 };
 
-const getHighQualityModelIds = async (): Promise<vscode.LanguageModelChat> => {
+const getHighQualityModelIds = async (): Promise<string[]> => {
 	const availableModels = await vscode.lm.selectChatModels();
 
 	if (availableModels.length === 0) {
-		throw new Error('No available models found for comparison.');
+		return [];
 	}
 
 	// Separate models by priority
 	const geminiModels = availableModels.filter(model =>
-		model.family.includes('gemini')
+		model.family.includes('gemini 2.5')
 	);
 
 	const claudeModels = availableModels.filter(model =>
-		model.family.includes('claude')
+		model.family.includes('claude 3.7')
 	);
 
 	const otherModels = availableModels.filter(model =>
-		!model.family.includes('gemini') && !model.family.includes('claude')
+		!model.family.includes('gemini 2.5') && !model.family.includes('claude 3.7')
 	);
-
-	console.log(`Gemini Models: ${geminiModels.map(model => model.id).join(', ')}`);
-	console.log(`Claude Models: ${claudeModels.map(model => model.id).join(', ')}`);
-	console.log(`Other Models: ${otherModels.map(model => model.id).join(', ')}`);
 
 	// Build priority list: mini models first, then claude 3.7, then others
 	const prioritizedModels = [
@@ -179,7 +175,9 @@ const getHighQualityModelIds = async (): Promise<vscode.LanguageModelChat> => {
 	];
 
 	// Return first 2 from prioritized list
-	return prioritizedModels[0]
+	return prioritizedModels
+		.slice(0, 2)
+		.map(model => model.id);
 };
 
 // Function to analyze and compare responses using one of the available models
@@ -190,11 +188,12 @@ async function analyzeComparison(): Promise<void> {
 
 	try {
 		// Get an available model for analysis
-		const analysisModel = await getHighQualityModelIds();
-		if (!analysisModel) {
+		const availableModels = await vscode.lm.selectChatModels();
+		if (availableModels.length === 0) {
 			return;
 		}
 
+		const analysisModel = availableModels[0]; // Use the first available model
 		const modelIds = Object.keys(comparisonData);
 		const responses = Object.values(comparisonData);
 
