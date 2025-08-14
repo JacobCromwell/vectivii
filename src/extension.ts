@@ -123,10 +123,12 @@ const getFallbackModelIds = async (): Promise<string[]> => {
 
 	// Separate models by priority
 	const miniModels = availableModels.filter(model =>
+		!model.family.includes('preview') &&
 		model.family.includes('-mini')
 	);
 
 	const gpt4Models = availableModels.filter(model =>
+		!model.family.includes('preview') &&
 		model.family.includes('gpt-4.0')
 	);
 
@@ -141,9 +143,9 @@ const getFallbackModelIds = async (): Promise<string[]> => {
 		...otherModels
 	];
 
-	// Return first 2 from prioritized list
+	// Return first 3 from prioritized list
 	return prioritizedModels
-		.slice(0, 2)
+		.slice(0, 3)
 		.map(model => model.id);
 };
 
@@ -156,15 +158,15 @@ const getHighQualityModelIds = async (): Promise<string[]> => {
 
 	// Separate models by priority
 	const geminiModels = availableModels.filter(model =>
-		model.family.includes('gemini 2.5')
+		model.family.includes('gemini-2.5')
 	);
 
 	const claudeModels = availableModels.filter(model =>
-		model.family.includes('claude 3.7')
+		model.family.includes('claude-3.7-sonnet')
 	);
 
 	const otherModels = availableModels.filter(model =>
-		!model.family.includes('gemini 2.5') && !model.family.includes('claude 3.7')
+		!model.family.includes('gemini-2.5') && !model.family.includes('claude-3.7-sonnet')
 	);
 
 	// Build priority list: mini models first, then claude 3.7, then others
@@ -182,23 +184,68 @@ const getHighQualityModelIds = async (): Promise<string[]> => {
 
 // Function to analyze and compare responses using one of the available models
 async function analyzeComparison(): Promise<void> {
-	if (Object.keys(comparisonData).length < 2) {
+	// Check if we have at least 2 successful responses
+	const successfulResponses = Object.keys(comparisonData).filter(key => comparisonData[key] && comparisonData[key].trim().length > 0);
+	
+	if (successfulResponses.length < 2) {
+		analyzedComparison = {
+			summary: "Not enough successful responses to analyze. Need at least 2 models to provide responses.",
+			commonElements: [],
+			differences: {},
+			recommendations: "Try running the comparison again or check model availability.",
+			structuredData: {}
+		};
 		return;
 	}
 
 	try {
-		// Get an available model for analysis
-		const availableModels = await vscode.lm.selectChatModels();
-		if (availableModels.length === 0) {
-			return;
+		// Get high-quality models for analysis
+		const highQualityModelIds = await getHighQualityModelIds();
+		
+		if (highQualityModelIds.length === 0) {
+			// Fallback to any available model
+			const availableModels = await vscode.lm.selectChatModels();
+			if (availableModels.length === 0) {
+				throw new Error("No models available for analysis");
+			}
+			
+			// Use the first available model
+			const analysisModel = availableModels[0];
+			await performAnalysis(analysisModel, successfulResponses);
+		} else {
+			// Try high-quality models first
+			let analysisSucceeded = false;
+			
+			for (const modelId of highQualityModelIds) {
+				try {
+					const [analysisModel] = await vscode.lm.selectChatModels({ family: modelId });
+					if (analysisModel) {
+						await performAnalysis(analysisModel, successfulResponses);
+						analysisSucceeded = true;
+						break;
+					}
+				} catch (modelError) {
+					console.warn(`Failed to use model ${modelId} for analysis:`, modelError);
+					continue;
+				}
+			}
 		}
 
-		const analysisModel = availableModels[0]; // Use the first available model
-		const modelIds = Object.keys(comparisonData);
-		const responses = Object.values(comparisonData);
+	} catch (error) {
+		console.error('Error analyzing comparison:', error);
+		
+		// Create a basic analysis based on the successful responses
+		analyzedComparison = createFallbackAnalysis(successfulResponses);
+	}
+}
 
-		// Create analysis prompt
-		const analysisPrompt = `
+// Helper function to perform the actual analysis
+async function performAnalysis(analysisModel: any, successfulResponses: string[]): Promise<void> {
+	const modelIds = successfulResponses;
+	const responses = modelIds.map(id => comparisonData[id]);
+
+	// Create analysis prompt
+	const analysisPrompt = `
 You are tasked with analyzing and comparing responses from multiple language models. Please provide a structured analysis in JSON format.
 
 Original prompt: "${lastPrompt}"
@@ -232,38 +279,59 @@ Focus on identifying:
 
 Return only the JSON object, no additional text.`;
 
-		const chatMessages = [vscode.LanguageModelChatMessage.User(analysisPrompt)];
-		const chatResponse = await analysisModel.sendRequest(chatMessages, {}, new vscode.CancellationTokenSource().token);
+	const chatMessages = [vscode.LanguageModelChatMessage.User(analysisPrompt)];
+	const chatResponse = await analysisModel.sendRequest(chatMessages, {}, new vscode.CancellationTokenSource().token);
 
-		let analysisResult = '';
-		for await (const fragment of chatResponse.text) {
-			analysisResult += fragment;
-		}
-
-		// Try to parse the JSON response
-		try {
-			analyzedComparison = JSON.parse(analysisResult);
-		} catch (parseError) {
-			// Fallback if JSON parsing fails
-			analyzedComparison = {
-				summary: "Analysis completed. Please review the responses manually.",
-				commonElements: [],
-				differences: {},
-				recommendations: "Manual review recommended due to analysis parsing error.",
-				structuredData: {}
-			};
-		}
-
-	} catch (error) {
-		console.error('Error analyzing comparison:', error);
-		analyzedComparison = {
-			summary: "Error occurred during analysis.",
-			commonElements: [],
-			differences: {},
-			recommendations: "Manual review recommended due to analysis error.",
-			structuredData: {}
-		};
+	let analysisResult = '';
+	for await (const fragment of chatResponse.text) {
+		analysisResult += fragment;
 	}
+
+	// Try to parse the JSON response
+	try {
+		const parsed = JSON.parse(analysisResult);
+		analyzedComparison = parsed;
+	} catch (parseError) {
+		console.warn('Failed to parse analysis JSON:', parseError);
+		// Try to extract JSON from the response if it's wrapped in other text
+		const jsonMatch = analysisResult.match(/\{[\s\S]*\}/);
+		if (jsonMatch) {
+			try {
+				analyzedComparison = JSON.parse(jsonMatch[0]);
+			} catch (secondParseError) {
+				throw new Error('Could not parse analysis response as JSON');
+			}
+		} else {
+			throw new Error('No JSON found in analysis response');
+		}
+	}
+}
+
+// Helper function to create a fallback analysis when automated analysis fails
+function createFallbackAnalysis(successfulResponses: string[]): ComparisonAnalysis {
+	const modelIds = successfulResponses;
+	const responses = modelIds.map(id => comparisonData[id]);
+	
+	// Create basic analysis
+	const analysis: ComparisonAnalysis = {
+		summary: `Successfully compared responses from ${modelIds.length} models. Automated analysis was unavailable, but all model responses are displayed for manual review.`,
+		commonElements: ["All models provided responses to the query"],
+		differences: {},
+		recommendations: `Review the ${modelIds.length} responses manually to identify differences in approach, detail, and quality. Each model may have unique insights worth considering.`,
+		structuredData: {}
+	};
+
+	// Add basic difference entries for each model
+	modelIds.forEach(modelId => {
+		const responseLength = comparisonData[modelId].length;
+		analysis.differences[modelId] = [`Response length: ${responseLength} characters`];
+		analysis.structuredData[modelId] = {
+			key_points: ["Response provided successfully"],
+			approach: "Standard model response"
+		};
+	});
+
+	return analysis;
 }
 
 // The core handler for our orchestrator participant.
