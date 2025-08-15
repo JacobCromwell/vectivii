@@ -42,7 +42,7 @@
      */
     function handleMessage(event) {
         const message = event.data;
-        console.log('Received message:', message.command);
+        console.log('Received message:', message.command, message);
         
         try {
             switch (message.command) {
@@ -72,7 +72,7 @@
         const loadingSpinner = document.getElementById('loadingSpinner');
         const emptyState = document.getElementById('emptyState');
 
-        if (!analysis || !data || Object.keys(data).length === 0) {
+        if (!data || Object.keys(data).length === 0) {
             hideElement(analysisSection);
             hideElement(loadingSpinner);
             showElement(emptyState);
@@ -84,11 +84,15 @@
         showElement(analysisSection);
         analysisSection.classList.add('fade-in');
 
-        // Update different sections
-        updateSummary(analysis.summary);
-        updateCommonElements(analysis.commonElements);
-        updateDifferences(analysis.differences);
-        updateRecommendations(analysis.recommendations);
+        // Update different sections if analysis is available
+        if (analysis) {
+            updateSummary(analysis.summary);
+            updateCommonElements(analysis.commonElements);
+            updateDifferences(analysis.differences);
+            updateRecommendations(analysis.recommendations);
+        }
+        
+        // Always update model responses
         updateModelResponses(data);
     }
 
@@ -98,6 +102,13 @@
     function updateData(data) {
         console.log('Updating data only');
         currentData = data;
+        
+        // Hide loading and empty state
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const emptyState = document.getElementById('emptyState');
+        hideElement(loadingSpinner);
+        hideElement(emptyState);
+        
         updateModelResponses(data);
     }
 
@@ -165,15 +176,20 @@
      */
     function updateModelResponses(data) {
         const resultsDiv = document.getElementById('results');
-        if (!resultsDiv) return;
+        if (!resultsDiv) {
+            console.error('Results div not found');
+            return;
+        }
 
         resultsDiv.innerHTML = '';
 
         if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+            console.log('No data to display');
             return;
         }
 
         Object.entries(data).forEach(([modelId, response], index) => {
+            console.log(`Creating card for model ${modelId} with response length: ${response.length}`);
             const card = createModelCard(modelId, response, index);
             resultsDiv.appendChild(card);
         });
