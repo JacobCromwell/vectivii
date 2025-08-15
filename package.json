@@ -13,6 +13,14 @@
       {
         "command": "jacob.showComparisonView",
         "title": "Show Multi-Model Comparison"
+      },
+      {
+        "command": "jacob.configureDefaultModels",
+        "title": "Configure Default Models"
+      },
+      {
+        "command": "jacob.addModelEval",
+        "title": "Add Another Model to Comparison"
       }
     ],
     "chatParticipants": [
@@ -22,7 +30,20 @@
         "fullName": "Model Comparison Orchestrator",
         "description": "Compares responses from multiple language models for a single prompt."
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Model Comparison Extension Settings",
+      "properties": {
+        "modelbase.defaultModels": {
+          "type": "array",
+          "default": [],
+          "description": "A list of language model IDs to use for comparison by default. Set via the 'Configure Default Models' command.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
