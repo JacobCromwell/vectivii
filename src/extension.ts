@@ -35,12 +35,30 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Register a command to prompt the user to set default models.
-	const setDefaultModelsCommand = vscode.commands.registerCommand('jacob.setDefaultModels', async () => {
-		vscode.window.showInformationMessage(
-			'To set your default comparison models, you can open the extension settings.'
-		);
-		// Open the extension settings panel directly
-		vscode.commands.executeCommand('workbench.action.openSettings', 'modelbase.defaultModels');
+	const configureDefaultModelsCommand = vscode.commands.registerCommand('jacob.configureDefaultModels', async () => {
+		const availableModels = await vscode.lm.selectChatModels();
+		if (availableModels.length === 0) {
+			vscode.window.showInformationMessage('No language models are currently available to set as defaults.');
+			return;
+		}
+
+		const quickPickItems = availableModels.map(model => ({
+			label: model.id,
+			description: model.name
+		}));
+
+		const selectedModels = await vscode.window.showQuickPick(quickPickItems, {
+			canPickMany: true,
+			placeHolder: 'Select the 2 language models that you would like to be your defaults for compares'
+		});
+
+		if (selectedModels && selectedModels.length >= 2) {
+			const modelIds = selectedModels.map(item => item.label);
+			await vscode.workspace.getConfiguration('modelbase').update('defaultModels', modelIds, vscode.ConfigurationTarget.Global);
+			vscode.window.showInformationMessage('Default language models have been set successfully!');
+		} else if (selectedModels && selectedModels.length !== 2) {
+			vscode.window.showWarningMessage('Please select exactly 2 language models to set as defaults.');
+		}
 	});
 
 	// Register a command to add a model for evaluation and update the comparison
@@ -95,7 +113,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Add subscriptions to the context so they are disposed of correctly.
-	context.subscriptions.push(compareParticipant, showComparisonCommand, setDefaultModelsCommand, addModelEvalCommand);
+	context.subscriptions.push(compareParticipant, showComparisonCommand, configureDefaultModelsCommand, addModelEvalCommand);
 
 	// Check if default models are set on first activation or installation
 	const isFirstRun = !context.globalState.get('modelbase.hasBeenRun');
