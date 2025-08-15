@@ -1,50 +1,272 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Enhanced Model Comparison</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Comparison - Multi-Theme UI</title>
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src {{cspSource}} 'unsafe-inline';">
 	<script type="module" src="{{TOOLKIT_URI}}"></script>
 	<link rel="stylesheet" href="{{STYLE_URI}}">
 </head>
 <body>
-	<div class="header">
-		<h1>Enhanced Model Comparison</h1>
-		<p>Intelligent analysis and side-by-side comparison of language model responses</p>
-	</div>
+    <div class="header">
+        <h1>Model Comparison Dashboard</h1>
+        <p>Intelligent analysis and comparison across multiple language models</p>
+    </div>
 
-	<div id="analysisSection" class="analysis-section" style="display: none;">
-		<h2>Analysis Summary</h2>
-		<div id="summaryContent" class="summary-box"></div>
-		
-		<div id="commonElements">
-			<h3>Common Elements</h3>
-			<div id="commonTags" class="tags-container"></div>
-		</div>
+    <div id="analysisSection" class="analysis-section fade-in">
+        <h2>Analysis Summary</h2>
+        <div id="summaryContent" class="summary-box">
+            Analyzing responses from multiple models...
+        </div>
+        
+        <div id="commonElements">
+            <h3>Common Elements</h3>
+            <div id="commonTags" class="tags-container">
+                <span class="tag common">Shared Concept 1</span>
+                <span class="tag common">Shared Concept 2</span>
+                <span class="tag common">Shared Concept 3</span>
+            </div>
+        </div>
 
-		<div id="differences">
-			<h3>Key Differences</h3>
-			<div id="differencesGrid" class="differences-grid"></div>
-		</div>
+        <div id="differences">
+            <h3>Key Differences</h3>
+            <div id="differencesGrid" class="tags-container">
+                <span class="tag unique">Model A Unique</span>
+                <span class="tag unique">Model B Unique</span>
+            </div>
+        </div>
+    </div>
 
-		<div id="recommendations">
-			<h3>Recommendations</h3>
-			<div id="recommendationsContent" class="summary-box"></div>
-		</div>
-	</div>
+    <div id="results" class="comparison-container">
+        <!-- Example Model Cards -->
+        <div class="model-card fade-in">
+            <div class="model-header">
+                <h2>Model A</h2>
+            </div>
+            <div class="model-content">
+                <div class="response-text">
+This is a sample response from Model A.
+It demonstrates how the text would appear
+in different theme styles.
 
-	<div id="results" class="comparison-container"></div>
+The response can contain code, explanations,
+and various formatting elements.
+                </div>
+                <div class="stats-bar" style="margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--border-color); font-size: 0.85em; opacity: 0.7;">
+                    📊 42 words • 256 characters
+                </div>
+            </div>
+        </div>
 
-	<div id="loadingSpinner" class="loading-spinner active">
-		<div>🔄 Loading comparison results...</div>
-	</div>
+        <div class="model-card fade-in">
+            <div class="model-header">
+                <h2>Model B</h2>
+            </div>
+            <div class="model-content">
+                <div class="response-text">
+This is a sample response from Model B.
+It shows different content and formatting
+compared to Model A.
 
-	<div id="emptyState" class="empty-state" style="display: none;">
-		<h3>No Comparison Data Available</h3>
-		<p>Run a model comparison to see results here.</p>
-	</div>
+Each model's response is displayed
+in its own card for easy comparison.
+                </div>
+                <div class="stats-bar" style="margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--border-color); font-size: 0.85em; opacity: 0.7;">
+                    📊 38 words • 241 characters
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Theme Switcher -->
+    <div class="theme-switcher">
+        <button class="theme-btn active" data-theme="flashy">✨ Flashy</button>
+        <button class="theme-btn" data-theme="minimal">⬜ Minimal</button>
+        <button class="theme-btn" data-theme="professional">💼 Professional</button>
+        <button class="theme-btn" data-theme="dark">🌙 Dark</button>
+    </div>
 
 	<script src="{{SCRIPT_URI}}"></script>
+    <script>
+        // Theme Management
+        class ThemeManager {
+            constructor() {
+                this.currentTheme = localStorage.getItem('model-comparison-theme') || 'flashy';
+                this.init();
+            }
+
+            init() {
+                // Apply saved theme
+                this.applyTheme(this.currentTheme);
+                
+                // Setup theme switcher buttons
+                this.setupThemeSwitcher();
+                
+                // Setup message listeners for cross-frame communication
+                this.setupMessageListeners();
+            }
+
+            applyTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                this.currentTheme = theme;
+                localStorage.setItem('model-comparison-theme', theme);
+                
+                // Update active button
+                document.querySelectorAll('.theme-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.theme === theme);
+                });
+                
+                // Notify parent frame if embedded
+                if (window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'THEME_CHANGED',
+                        payload: { theme },
+                        source: 'comparison-ui'
+                    }, '*');
+                }
+            }
+
+            setupThemeSwitcher() {
+                document.querySelectorAll('.theme-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        this.applyTheme(btn.dataset.theme);
+                    });
+                });
+            }
+
+            setupMessageListeners() {
+                window.addEventListener('message', (event) => {
+                    // Validate message origin if needed
+                    const message = event.data;
+                    
+                    switch (message.type) {
+                        case 'UPDATE_DATA':
+                            this.updateComparisonData(message.payload);
+                            break;
+                        case 'CHANGE_THEME':
+                            this.applyTheme(message.payload.theme);
+                            break;
+                        case 'REQUEST_STATE':
+                            this.sendCurrentState();
+                            break;
+                    }
+                });
+                
+                // Notify parent that UI is ready
+                if (window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'READY',
+                        source: 'comparison-ui'
+                    }, '*');
+                }
+            }
+
+            updateComparisonData(data) {
+                // Update the UI with new comparison data
+                if (data.analysis) {
+                    this.updateAnalysis(data.analysis);
+                }
+                if (data.data) {
+                    this.updateModelResponses(data.data);
+                }
+            }
+
+            updateAnalysis(analysis) {
+                // Update summary
+                const summaryEl = document.getElementById('summaryContent');
+                if (summaryEl && analysis.summary) {
+                    summaryEl.textContent = analysis.summary;
+                }
+                
+                // Update common elements
+                const commonTagsEl = document.getElementById('commonTags');
+                if (commonTagsEl && analysis.commonElements) {
+                    commonTagsEl.innerHTML = '';
+                    analysis.commonElements.forEach(element => {
+                        const tag = document.createElement('span');
+                        tag.className = 'tag common';
+                        tag.textContent = element;
+                        commonTagsEl.appendChild(tag);
+                    });
+                }
+                
+                // Update differences
+                const differencesEl = document.getElementById('differencesGrid');
+                if (differencesEl && analysis.differences) {
+                    differencesEl.innerHTML = '';
+                    Object.entries(analysis.differences).forEach(([model, diffs]) => {
+                        diffs.forEach(diff => {
+                            const tag = document.createElement('span');
+                            tag.className = 'tag unique';
+                            tag.textContent = `${model}: ${diff}`;
+                            differencesEl.appendChild(tag);
+                        });
+                    });
+                }
+            }
+
+            updateModelResponses(data) {
+                const resultsEl = document.getElementById('results');
+                if (!resultsEl) return;
+                
+                resultsEl.innerHTML = '';
+                
+                Object.entries(data).forEach(([modelId, response], index) => {
+                    const card = this.createModelCard(modelId, response, index);
+                    resultsEl.appendChild(card);
+                });
+            }
+
+            createModelCard(modelId, response, index) {
+                const card = document.createElement('div');
+                card.className = 'model-card fade-in';
+                card.style.animationDelay = `${index * 0.1}s`;
+                
+                const wordCount = response.split(/\s+/).filter(w => w.length > 0).length;
+                const charCount = response.length;
+                
+                card.innerHTML = `
+                    <div class="model-header">
+                        <h2>${modelId}</h2>
+                    </div>
+                    <div class="model-content">
+                        <div class="response-text">${this.escapeHtml(response)}</div>
+                        <div class="stats-bar" style="margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--border-color); font-size: 0.85em; opacity: 0.7;">
+                            📊 ${wordCount} words • ${charCount} characters
+                        </div>
+                    </div>
+                `;
+                
+                return card;
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            sendCurrentState() {
+                if (window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'STATE_UPDATE',
+                        payload: {
+                            theme: this.currentTheme,
+                            ready: true
+                        },
+                        source: 'comparison-ui'
+                    }, '*');
+                }
+            }
+        }
+
+        // Initialize theme manager when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => new ThemeManager());
+        } else {
+            new ThemeManager();
+        }
+    </script>
 </body>
 </html>
