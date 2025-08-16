@@ -39,7 +39,6 @@
     </div>
 
     <div id="results" class="comparison-container">
-        <!-- Example Model Cards -->
         <div class="model-card fade-in">
             <div class="model-header">
                 <h2>Model A</h2>
@@ -79,12 +78,17 @@ in its own card for easy comparison.
         </div>
     </div>
 
-    <!-- Theme Switcher -->
-    <div class="theme-switcher">
-        <button class="theme-btn active" data-theme="flashy">✨ Flashy</button>
-        <button class="theme-btn" data-theme="minimal">⬜ Minimal</button>
-        <button class="theme-btn" data-theme="professional">💼 Professional</button>
-        <button class="theme-btn" data-theme="dark">🌙 Dark</button>
+    <div class="theme-switcher-container">
+        <button id="themeToggleBtn" class="theme-toggle-btn">
+            <i class="fas fa-sun"></i> Themes
+        </button>
+        <div class="theme-switcher hidden">
+            <button class="theme-btn active" data-theme="flashy">✨ Flashy</button>
+            <button class="theme-btn" data-theme="minimal">⬜ Minimal</button>
+            <button class="theme-btn" data-theme="professional">💼 Professional</button>
+            <button class="theme-btn" data-theme="dark">🌙 Dark</button>
+            <button class="theme-btn" data-theme="rose-quartz">💖 Rose Quartz</button>
+        </div>
     </div>
 
 	<script src="{{SCRIPT_URI}}"></script>
@@ -105,6 +109,9 @@ in its own card for easy comparison.
                 
                 // Setup message listeners for cross-frame communication
                 this.setupMessageListeners();
+
+                // Setup hamburger button toggle
+                this.setupThemeToggle();
             }
 
             applyTheme(theme) {
@@ -125,6 +132,12 @@ in its own card for easy comparison.
                         source: 'comparison-ui'
                     }, '*');
                 }
+
+                // Hide the theme switcher after a selection is made
+                const themeSwitcher = document.querySelector('.theme-switcher');
+                if (themeSwitcher) {
+                    themeSwitcher.classList.add('hidden');
+                }
             }
 
             setupThemeSwitcher() {
@@ -133,6 +146,17 @@ in its own card for easy comparison.
                         this.applyTheme(btn.dataset.theme);
                     });
                 });
+            }
+
+            setupThemeToggle() {
+                const toggleBtn = document.getElementById('themeToggleBtn');
+                const themeSwitcher = document.querySelector('.theme-switcher');
+
+                if (toggleBtn && themeSwitcher) {
+                    toggleBtn.addEventListener('click', () => {
+                        themeSwitcher.classList.toggle('hidden');
+                    });
+                }
             }
 
             setupMessageListeners() {
